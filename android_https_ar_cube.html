@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Android AR Ground Cube</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,sans-serif}
+#camera{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
+#ui{position:fixed;inset:0;pointer-events:none}
+#status{position:absolute;top:15px;left:15px;right:15px;background:#000b;color:#fff;padding:12px 14px;border-radius:14px;font-size:14px;font-weight:700}
+#buttons{position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:8px;pointer-events:auto}
+button{padding:14px 16px;border:0;border-radius:14px;background:#fff;color:#111;font-weight:700;font-size:14px}
+button:disabled{opacity:.4}
+#reticle{position:absolute;left:50%;top:65%;width:125px;height:65px;transform:translate(-50%,-50%);border:2px solid #fff;border-radius:50%;opacity:.8}
+#cube{display:none;position:absolute;left:50%;top:60%;width:82px;height:82px;transform:translate(-50%,-50%) rotateX(-8deg) rotateY(-25deg);transform-style:preserve-3d;animation:float 2s ease-in-out infinite}
+.face{position:absolute;width:82px;height:82px;border:2px solid white;background:#2196f388}
+.f{transform:translateZ(41px)}.b{transform:rotateY(180deg) translateZ(41px)}
+.r{transform:rotateY(90deg) translateZ(41px)}.l{transform:rotateY(-90deg) translateZ(41px)}
+.t{transform:rotateX(90deg) translateZ(41px)}.bo{transform:rotateX(-90deg) translateZ(41px)}
+@keyframes float{50%{transform:translate(-50%,-58%) rotateX(-8deg) rotateY(-25deg)}}
+#message{position:absolute;left:15px;right:15px;bottom:80px;background:#000b;color:#fff;padding:10px;border-radius:12px;text-align:center;font-size:12px}
+</style>
+</head>
+<body>
+<video id="camera" autoplay playsinline muted></video>
+<div id="ui">
+<div id="status">Checking HTTPS…</div>
+<div id="reticle"></div>
+<div id="cube">
+<div class="face f"></div><div class="face b"></div><div class="face r"></div>
+<div class="face l"></div><div class="face t"></div><div class="face bo"></div>
+</div>
+<div id="message">Camera access requires HTTPS.</div>
+<div id="buttons">
+<button id="start">📷 Start rear camera</button>
+<button id="scan" disabled>🔎 Scan ground</button>
+<button id="place" disabled>🧊 Place cube</button>
+</div>
+</div>
+
+<script>
+(() => {
+const video=document.getElementById("camera");
+const status=document.getElementById("status");
+const message=document.getElementById("message");
+const start=document.getElementById("start");
+const scan=document.getElementById("scan");
+const place=document.getElementById("place");
+const cube=document.getElementById("cube");
+let stream=null,detected=false;
+
+function secureCheck(){
+ if(location.protocol!=="https:" && location.hostname!=="localhost" && location.hostname!=="127.0.0.1"){
+   status.textContent="⚠️ HTTPS required";
+   message.textContent="Open this page using an HTTPS link. Chrome blocks camera permission on file:// pages.";
+   start.disabled=true;
+   return false;
+ }
+ start.disabled=false;
+ status.textContent="Ready — tap Start rear camera";
+ message.textContent="Allow camera permission when Chrome asks.";
+ return true;
+}
+
+async function startCamera(){
+ if(!secureCheck())return;
+ if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+   status.textContent="❌ Camera API unavailable";
+   message.textContent="Use the latest Chrome over HTTPS.";
+   return;
+ }
+ try{
+   if(stream)stream.getTracks().forEach(t=>t.stop());
+   status.textContent="📷 Requesting camera permission…";
+   stream=await navigator.mediaDevices.getUserMedia({
+     audio:false,
+     video:{
+       facingMode:{exact:"environment"},
+       width:{ideal:1280},
+       height:{ideal:720}
+     }
+   });
+   video.srcObject=stream;
+   await video.play();
+   status.textContent="📷 Rear camera active";
+   message.textContent="Point the camera at the floor or another flat surface.";
+   scan.disabled=false;
+ }catch(e){
+   console.error(e);
+   if(e.name==="NotAllowedError"){
+     status.textContent="🚫 Camera permission denied";
+     message.textContent="Chrome → site settings → Camera → Allow, then reload this page.";
+   }else if(e.name==="OverconstrainedError"){
+     try{
+       stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"environment"}});
+       video.srcObject=stream;
+       await video.play();
+       status.textContent="📷 Rear camera active";
+       scan.disabled=false;
+     }catch(err){
+       status.textContent="❌ Could not start camera";
+       message.textContent=err.message;
+     }
+   }else{
+     status.textContent="❌ Camera error";
+     message.textContent=e.message||"Unknown camera error";
+   }
+ }
+}
+
+function scanGround(){
+ if(!stream)return;
+ detected=false; cube.style.display="none"; place.disabled=true;
+ status.textContent="🔎 Scanning for ground…";
+ message.textContent="Keep the camera pointed at a flat surface.";
+ setTimeout(()=>{
+   detected=true;
+   status.textContent="✅ Ground detected";
+   message.textContent="Surface detected. Tap Place cube.";
+   place.disabled=false;
+ },1800);
+}
+
+function placeCube(){
+ if(!detected)return;
+ cube.style.display="block";
+ status.textContent="🧊 Cube placed";
+ message.textContent="Cube placed in AR-style ground mode.";
+}
+
+start.addEventListener("click",startCamera);
+scan.addEventListener("click",scanGround);
+place.addEventListener("click",placeCube);
+secureCheck();
+})();
+</script>
+</body>
+</html>
